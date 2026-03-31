@@ -47,7 +47,7 @@ class TaskDefs {
     ),
     TaskDef(
       id: TaskId.cra,
-      title: 'CRA',
+      title: 'Chaos Root Abyss',
       resetType: ResetType.weeklyThursdayUtcMidnight,
       isVisibleFor: _always,
     ),
