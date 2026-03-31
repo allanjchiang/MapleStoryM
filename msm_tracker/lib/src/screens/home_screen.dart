@@ -52,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
           level: 1,
           starforce: 0,
           taskCompletions: const {},
+          hiddenTasks: const {},
         ),
       ),
     );
@@ -297,9 +298,10 @@ class CharacterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visibleTasks = TaskDefs.all
+    final eligibleTasks = TaskDefs.all
         .where((t) => t.isVisibleFor(character.level, character.starforce))
         .toList();
+    final visibleTasks = eligibleTasks.where((t) => !character.isTaskHidden(t)).toList();
 
     return Card(
       child: Padding(
@@ -315,6 +317,20 @@ class CharacterCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
+                IconButton(
+                  onPressed: () async {
+                    final next = await showDialog<MsmCharacter>(
+                      context: context,
+                      builder: (context) => ManageTasksDialog(
+                        character: character,
+                        eligibleTasks: eligibleTasks,
+                      ),
+                    );
+                    if (next != null) onChanged(next);
+                  },
+                  tooltip: 'Hide/unhide tasks',
+                  icon: const Icon(Icons.tune),
+                ),
                 IconButton(onPressed: onEdit, icon: const Icon(Icons.edit)),
                 IconButton(onPressed: onDelete, icon: const Icon(Icons.delete)),
               ],
@@ -323,7 +339,7 @@ class CharacterCard extends StatelessWidget {
             Text('Level: ${character.level}   Starforce: ${character.starforce}'),
             const Divider(height: 20),
             if (visibleTasks.isEmpty)
-              const Text('No tasks available for this character yet.')
+              const Text('No tasks to show for this character.')
             else
               ...visibleTasks.map((def) {
                 final key = resetKeyFor(
@@ -332,23 +348,120 @@ class CharacterCard extends StatelessWidget {
                   region: region,
                 );
                 final done = character.isTaskDoneForCurrentReset(def, key);
-                return CheckboxListTile(
+                return ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
+                  leading: Checkbox(
+                    value: done,
+                    onChanged: (v) {
+                      if (v == true) {
+                        onChanged(character.withTaskCompletion(def, resetKey: key));
+                      } else {
+                        onChanged(character.withTaskUnchecked(def));
+                      }
+                    },
+                  ),
                   title: Text(def.title),
-                  value: done,
-                  onChanged: (v) {
-                    if (v == true) {
-                      onChanged(character.withTaskCompletion(def, resetKey: key));
-                    } else {
-                      onChanged(character.withTaskUnchecked(def));
-                    }
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (v) {
+                      if (v == 'hide') onChanged(character.withTaskHidden(def));
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'hide', child: Text('Hide for this character')),
+                    ],
+                  ),
+                  onTap: () {
+                    onChanged(
+                      done
+                          ? character.withTaskUnchecked(def)
+                          : character.withTaskCompletion(def, resetKey: key),
+                    );
                   },
                 );
               }),
           ],
         ),
       ),
+    );
+  }
+}
+
+class ManageTasksDialog extends StatefulWidget {
+  final MsmCharacter character;
+  final List<TaskDef> eligibleTasks;
+
+  const ManageTasksDialog({
+    super.key,
+    required this.character,
+    required this.eligibleTasks,
+  });
+
+  @override
+  State<ManageTasksDialog> createState() => _ManageTasksDialogState();
+}
+
+class _ManageTasksDialogState extends State<ManageTasksDialog> {
+  late Set<String> _hidden;
+
+  @override
+  void initState() {
+    super.initState();
+    _hidden = Set<String>.from(widget.character.hiddenTasks);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tasks = TaskDefs.all;
+    return AlertDialog(
+      title: Text('Tasks for ${widget.character.name}'),
+      content: SizedBox(
+        width: 420,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Text('Toggle tasks you want to hide for this character.'),
+            const SizedBox(height: 12),
+            ...tasks.map((t) {
+              final isEligible =
+                  t.isVisibleFor(widget.character.level, widget.character.starforce);
+              final isHidden = _hidden.contains(t.id.name);
+              return SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(t.title),
+                subtitle: Text(isEligible ? (isHidden ? 'Hidden' : 'Shown') : 'Not eligible'),
+                value: !isHidden,
+                onChanged: isEligible
+                    ? (shown) {
+                        setState(() {
+                          if (shown) {
+                            _hidden.remove(t.id.name);
+                          } else {
+                            _hidden.add(t.id.name);
+                          }
+                        });
+                      }
+                    : null,
+              );
+            }),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () {
+            var next = widget.character.copyWith(hiddenTasks: _hidden);
+            // If a task is hidden, also clear completion state so it doesn't reappear checked later.
+            final completions = Map<String, String>.from(next.taskCompletions);
+            for (final taskIdName in _hidden) {
+              completions.remove(taskIdName);
+            }
+            next = next.copyWith(taskCompletions: completions);
+            Navigator.pop(context, next);
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

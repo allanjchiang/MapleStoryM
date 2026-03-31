@@ -9,12 +9,16 @@ class MsmCharacter {
   /// Key: TaskId.name, Value: last completed reset key string.
   final Map<String, String> taskCompletions;
 
+  /// TaskId.name values the user has hidden for this character.
+  final Set<String> hiddenTasks;
+
   const MsmCharacter({
     required this.id,
     required this.name,
     required this.level,
     required this.starforce,
     required this.taskCompletions,
+    required this.hiddenTasks,
   });
 
   MsmCharacter copyWith({
@@ -23,6 +27,7 @@ class MsmCharacter {
     int? level,
     int? starforce,
     Map<String, String>? taskCompletions,
+    Set<String>? hiddenTasks,
   }) {
     return MsmCharacter(
       id: id ?? this.id,
@@ -30,6 +35,7 @@ class MsmCharacter {
       level: level ?? this.level,
       starforce: starforce ?? this.starforce,
       taskCompletions: taskCompletions ?? this.taskCompletions,
+      hiddenTasks: hiddenTasks ?? this.hiddenTasks,
     );
   }
 
@@ -49,16 +55,32 @@ class MsmCharacter {
     return copyWith(taskCompletions: next);
   }
 
+  bool isTaskHidden(TaskDef def) => hiddenTasks.contains(def.id.name);
+
+  MsmCharacter withTaskHidden(TaskDef def) {
+    final nextHidden = Set<String>.from(hiddenTasks)..add(def.id.name);
+    final nextCompletions = Map<String, String>.from(taskCompletions)
+      ..remove(def.id.name);
+    return copyWith(hiddenTasks: nextHidden, taskCompletions: nextCompletions);
+  }
+
+  MsmCharacter withTaskUnhidden(TaskDef def) {
+    final nextHidden = Set<String>.from(hiddenTasks)..remove(def.id.name);
+    return copyWith(hiddenTasks: nextHidden);
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
         'level': level,
         'starforce': starforce,
         'taskCompletions': taskCompletions,
+        'hiddenTasks': hiddenTasks.toList(growable: false),
       };
 
   static MsmCharacter fromJson(Map<String, dynamic> json) {
     final rawCompletions = json['taskCompletions'];
+    final rawHidden = json['hiddenTasks'];
     return MsmCharacter(
       id: (json['id'] as String?) ?? '',
       name: (json['name'] as String?) ?? 'Character',
@@ -68,6 +90,9 @@ class MsmCharacter {
           ? rawCompletions.map(
               (k, v) => MapEntry(k.toString(), v.toString()),
             )
+          : const {},
+      hiddenTasks: rawHidden is List
+          ? rawHidden.map((e) => e.toString()).toSet()
           : const {},
     );
   }
