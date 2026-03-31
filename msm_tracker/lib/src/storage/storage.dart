@@ -9,6 +9,8 @@ class Storage {
   static const _boxName = 'msm_tracker';
   static const _keyCharacters = 'characters';
   static const _keyServerRegion = 'serverRegion';
+  static const _keyGeneralTaskCompletions = 'generalTaskCompletions';
+  static const _keyOptionalDefaultsDone = 'optionalDefaultsDone';
 
   static late final Box _box;
 
@@ -19,6 +21,12 @@ class Storage {
     }
     if (!_box.containsKey(_keyServerRegion)) {
       await _box.put(_keyServerRegion, 'asia');
+    }
+    if (!_box.containsKey(_keyGeneralTaskCompletions)) {
+      await _box.put(_keyGeneralTaskCompletions, <String, String>{});
+    }
+    if (!_box.containsKey(_keyOptionalDefaultsDone)) {
+      await _box.put(_keyOptionalDefaultsDone, false);
     }
   }
 
@@ -48,6 +56,29 @@ class Storage {
     await _box.put(_keyServerRegion, region == 'na' ? 'na' : 'asia');
   }
 
+  static Map<String, String> loadGeneralTaskCompletions() {
+    final raw = _box.get(_keyGeneralTaskCompletions);
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k.toString(), v.toString()));
+    }
+    return const {};
+  }
+
+  static Future<void> saveGeneralTaskCompletions(
+    Map<String, String> completions,
+  ) async {
+    await _box.put(_keyGeneralTaskCompletions, completions);
+  }
+
+  static bool loadOptionalDefaultsDone() {
+    final v = _box.get(_keyOptionalDefaultsDone);
+    return v is bool ? v : false;
+  }
+
+  static Future<void> saveOptionalDefaultsDone(bool done) async {
+    await _box.put(_keyOptionalDefaultsDone, done);
+  }
+
   static String newId() {
     final now = DateTime.now().microsecondsSinceEpoch;
     final rand = Random.secure().nextInt(1 << 32);
@@ -57,16 +88,22 @@ class Storage {
   static Map<String, dynamic> exportJson(
     List<MsmCharacter> characters, {
     required String serverRegion,
+    required Map<String, String> generalTaskCompletions,
   }) {
     return {
       'schemaVersion': 1,
       'exportedAtUtc': DateTime.now().toUtc().toIso8601String(),
       'serverRegion': serverRegion,
+      'generalTaskCompletions': generalTaskCompletions,
       'characters': characters.map((c) => c.toJson()).toList(),
     };
   }
 
-  static ({List<MsmCharacter> characters, String? serverRegion}) importJson(
+  static ({
+    List<MsmCharacter> characters,
+    String? serverRegion,
+    Map<String, String>? generalTaskCompletions
+  }) importJson(
     String jsonText,
   ) {
     final decoded = jsonDecode(jsonText);
@@ -81,12 +118,17 @@ class Storage {
     final parsedRegion = region is String && (region == 'asia' || region == 'na')
         ? region
         : null;
+    final general = decoded['generalTaskCompletions'];
+    final parsedGeneral = general is Map
+        ? general.map((k, v) => MapEntry(k.toString(), v.toString()))
+        : null;
     return (
       characters: characters
         .whereType<Map>()
         .map((m) => MsmCharacter.fromJson(m.cast<String, dynamic>()))
         .toList(),
       serverRegion: parsedRegion,
+      generalTaskCompletions: parsedGeneral,
     );
   }
 }

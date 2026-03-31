@@ -18,6 +18,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late List<MsmCharacter> _characters;
   late ServerRegion _region;
+  late Map<String, String> _generalTaskCompletions;
   Timer? _ticker;
   DateTime _nowUtc = DateTime.now().toUtc();
 
@@ -26,9 +27,32 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _characters = Storage.loadCharacters();
     _region = ServerRegionUi.fromStorageKey(Storage.loadServerRegion());
+    _generalTaskCompletions = Storage.loadGeneralTaskCompletions();
+    _initOptionalDefaultsIfNeeded();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() => _nowUtc = DateTime.now().toUtc());
     });
+  }
+
+  Future<void> _initOptionalDefaultsIfNeeded() async {
+    if (Storage.loadOptionalDefaultsDone()) return;
+    if (_characters.isEmpty) {
+      await Storage.saveOptionalDefaultsDone(true);
+      return;
+    }
+
+    // Enable optional tasks by default only for the highest-level character.
+    final highest = _characters.reduce((a, b) => a.level >= b.level ? a : b);
+    final idName = TaskId.freeChargeAutoBattle.name;
+    final next = _characters.map((c) {
+      if (c.id != highest.id) return c;
+      final enabled = Set<String>.from(c.enabledOptionalTasks)..add(idName);
+      return c.copyWith(enabledOptionalTasks: enabled);
+    }).toList();
+
+    setState(() => _characters = next);
+    await _persist();
+    await Storage.saveOptionalDefaultsDone(true);
   }
 
   @override
@@ -53,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
           starforce: 0,
           taskCompletions: const {},
           hiddenTasks: const {},
+          enabledOptionalTasks: const {},
         ),
       ),
     );
@@ -94,7 +119,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _export() async {
-    final jsonMap = Storage.exportJson(_characters, serverRegion: _region.storageKey);
+    final jsonMap = Storage.exportJson(
+      _characters,
+      serverRegion: _region.storageKey,
+      generalTaskCompletions: _generalTaskCompletions,
+    );
     final filename = 'msm-tracker-export-${DateTime.now().toUtc().toIso8601String()}';
     await saveJsonFile(filename: filename, jsonMap: jsonMap);
     if (!mounted) return;
@@ -111,9 +140,13 @@ class _HomeScreenState extends State<HomeScreen> {
         if (imported.serverRegion != null) {
           _region = ServerRegionUi.fromStorageKey(imported.serverRegion!);
         }
+        if (imported.generalTaskCompletions != null) {
+          _generalTaskCompletions = imported.generalTaskCompletions!;
+        }
       });
       await _persist();
       await Storage.saveServerRegion(_region.storageKey);
+      await Storage.saveGeneralTaskCompletions(_generalTaskCompletions);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Import complete.')));
     } catch (e) {
@@ -187,6 +220,16 @@ class _HomeScreenState extends State<HomeScreen> {
             region: _region,
           ),
           const SizedBox(height: 12),
+          _GeneralChecklistCard(
+            nowUtc: _nowUtc,
+            region: _region,
+            completions: _generalTaskCompletions,
+            onChanged: (next) async {
+              setState(() => _generalTaskCompletions = next);
+              await Storage.saveGeneralTaskCompletions(_generalTaskCompletions);
+            },
+          ),
+          const SizedBox(height: 12),
           if (_characters.isEmpty)
             const _EmptyState()
           else
@@ -207,6 +250,61 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _GeneralChecklistCard extends StatelessWidget {
+  final DateTime nowUtc;
+  final ServerRegion region;
+  final Map<String, String> completions;
+  final ValueChanged<Map<String, String>> onChanged;
+
+  const _GeneralChecklistCard({
+    required this.nowUtc,
+    required this.region,
+    required this.completions,
+    required this.onChanged,
+  });
+
+  static const String _eventMinigamesId = 'eventMinigames';
+
+  @override
+  Widget build(BuildContext context) {
+    final resetKey = resetKeyFor(
+      resetType: ResetType.dailyUtcMidnight,
+      nowUtc: nowUtc,
+      region: region,
+    );
+    final done = completions[_eventMinigamesId] == resetKey;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('General checklist', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Event minigames'),
+              subtitle: const Text('Daily'),
+              value: done,
+              onChanged: (v) {
+                final next = Map<String, String>.from(completions);
+                if (v == true) {
+                  next[_eventMinigamesId] = resetKey;
+                } else {
+                  next.remove(_eventMinigamesId);
+                }
+                onChanged(next);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -301,7 +399,10 @@ class CharacterCard extends StatelessWidget {
     final eligibleTasks = TaskDefs.all
         .where((t) => t.isVisibleFor(character.level, character.starforce))
         .toList();
-    final visibleTasks = eligibleTasks.where((t) => !character.isTaskHidden(t)).toList();
+    final visibleTasks = eligibleTasks
+        .where((t) => !t.isOptional || character.isOptionalTaskEnabled(t))
+        .where((t) => !character.isTaskHidden(t))
+        .toList();
 
     return Card(
       child: Padding(
@@ -402,11 +503,13 @@ class ManageTasksDialog extends StatefulWidget {
 
 class _ManageTasksDialogState extends State<ManageTasksDialog> {
   late Set<String> _hidden;
+  late Set<String> _enabledOptional;
 
   @override
   void initState() {
     super.initState();
     _hidden = Set<String>.from(widget.character.hiddenTasks);
+    _enabledOptional = Set<String>.from(widget.character.enabledOptionalTasks);
   }
 
   @override
@@ -425,18 +528,33 @@ class _ManageTasksDialogState extends State<ManageTasksDialog> {
               final isEligible =
                   t.isVisibleFor(widget.character.level, widget.character.starforce);
               final isHidden = _hidden.contains(t.id.name);
+              final isOptionalEnabled = _enabledOptional.contains(t.id.name);
               return SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(t.title),
-                subtitle: Text(isEligible ? (isHidden ? 'Hidden' : 'Shown') : 'Not eligible'),
-                value: !isHidden,
+                subtitle: Text(
+                  !isEligible
+                      ? 'Not eligible'
+                      : t.isOptional
+                          ? (isOptionalEnabled ? 'Optional: enabled' : 'Optional: disabled')
+                          : (isHidden ? 'Hidden' : 'Shown'),
+                ),
+                value: t.isOptional ? isOptionalEnabled : !isHidden,
                 onChanged: isEligible
-                    ? (shown) {
+                    ? (v) {
                         setState(() {
-                          if (shown) {
-                            _hidden.remove(t.id.name);
+                          if (t.isOptional) {
+                            if (v) {
+                              _enabledOptional.add(t.id.name);
+                            } else {
+                              _enabledOptional.remove(t.id.name);
+                            }
                           } else {
-                            _hidden.add(t.id.name);
+                            if (v) {
+                              _hidden.remove(t.id.name);
+                            } else {
+                              _hidden.add(t.id.name);
+                            }
                           }
                         });
                       }
@@ -450,11 +568,19 @@ class _ManageTasksDialogState extends State<ManageTasksDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(
           onPressed: () {
-            var next = widget.character.copyWith(hiddenTasks: _hidden);
-            // If a task is hidden, also clear completion state so it doesn't reappear checked later.
+            var next = widget.character.copyWith(
+              hiddenTasks: _hidden,
+              enabledOptionalTasks: _enabledOptional,
+            );
+            // If a task is hidden/disabled, also clear completion state so it doesn't reappear checked later.
             final completions = Map<String, String>.from(next.taskCompletions);
             for (final taskIdName in _hidden) {
               completions.remove(taskIdName);
+            }
+            for (final t in tasks.where((t) => t.isOptional)) {
+              if (!_enabledOptional.contains(t.id.name)) {
+                completions.remove(t.id.name);
+              }
             }
             next = next.copyWith(taskCompletions: completions);
             Navigator.pop(context, next);

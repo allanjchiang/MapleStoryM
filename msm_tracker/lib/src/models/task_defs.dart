@@ -1,8 +1,7 @@
 enum TaskId {
   chaosDailyDungeon,
   forestOfErdaCharge,
-  chargeAutoBattle,
-  eventMinigames,
+  freeChargeAutoBattle,
   pharaohsTreasure,
   cra,
 }
@@ -18,12 +17,14 @@ class TaskDef {
   final String title;
   final ResetType resetType;
   final bool Function(int level, int starforce) isVisibleFor;
+  final bool isOptional;
 
   const TaskDef({
     required this.id,
     required this.title,
     required this.resetType,
     required this.isVisibleFor,
+    this.isOptional = false,
   });
 }
 
@@ -42,16 +43,11 @@ class TaskDefs {
       isVisibleFor: _levelAtLeast220,
     ),
     TaskDef(
-      id: TaskId.chargeAutoBattle,
-      title: 'Charge Auto Battle',
+      id: TaskId.freeChargeAutoBattle,
+      title: 'Free Charge Auto Battle',
       resetType: ResetType.dailyUtcMidnight,
       isVisibleFor: _always,
-    ),
-    TaskDef(
-      id: TaskId.eventMinigames,
-      title: 'Event minigames',
-      resetType: ResetType.dailyUtcMidnight,
-      isVisibleFor: _always,
+      isOptional: true,
     ),
     TaskDef(
       id: TaskId.pharaohsTreasure,

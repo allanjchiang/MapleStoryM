@@ -12,6 +12,9 @@ class MsmCharacter {
   /// TaskId.name values the user has hidden for this character.
   final Set<String> hiddenTasks;
 
+  /// Optional TaskId.name values enabled for this character.
+  final Set<String> enabledOptionalTasks;
+
   const MsmCharacter({
     required this.id,
     required this.name,
@@ -19,6 +22,7 @@ class MsmCharacter {
     required this.starforce,
     required this.taskCompletions,
     required this.hiddenTasks,
+    required this.enabledOptionalTasks,
   });
 
   MsmCharacter copyWith({
@@ -28,6 +32,7 @@ class MsmCharacter {
     int? starforce,
     Map<String, String>? taskCompletions,
     Set<String>? hiddenTasks,
+    Set<String>? enabledOptionalTasks,
   }) {
     return MsmCharacter(
       id: id ?? this.id,
@@ -36,6 +41,7 @@ class MsmCharacter {
       starforce: starforce ?? this.starforce,
       taskCompletions: taskCompletions ?? this.taskCompletions,
       hiddenTasks: hiddenTasks ?? this.hiddenTasks,
+      enabledOptionalTasks: enabledOptionalTasks ?? this.enabledOptionalTasks,
     );
   }
 
@@ -69,6 +75,22 @@ class MsmCharacter {
     return copyWith(hiddenTasks: nextHidden);
   }
 
+  bool isOptionalTaskEnabled(TaskDef def) {
+    return enabledOptionalTasks.contains(def.id.name);
+  }
+
+  MsmCharacter withOptionalTaskEnabled(TaskDef def) {
+    final next = Set<String>.from(enabledOptionalTasks)..add(def.id.name);
+    return copyWith(enabledOptionalTasks: next);
+  }
+
+  MsmCharacter withOptionalTaskDisabled(TaskDef def) {
+    final nextEnabled = Set<String>.from(enabledOptionalTasks)..remove(def.id.name);
+    final nextCompletions = Map<String, String>.from(taskCompletions)
+      ..remove(def.id.name);
+    return copyWith(enabledOptionalTasks: nextEnabled, taskCompletions: nextCompletions);
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
@@ -76,11 +98,13 @@ class MsmCharacter {
         'starforce': starforce,
         'taskCompletions': taskCompletions,
         'hiddenTasks': hiddenTasks.toList(growable: false),
+        'enabledOptionalTasks': enabledOptionalTasks.toList(growable: false),
       };
 
   static MsmCharacter fromJson(Map<String, dynamic> json) {
     final rawCompletions = json['taskCompletions'];
     final rawHidden = json['hiddenTasks'];
+    final rawEnabledOptional = json['enabledOptionalTasks'];
     return MsmCharacter(
       id: (json['id'] as String?) ?? '',
       name: (json['name'] as String?) ?? 'Character',
@@ -93,6 +117,9 @@ class MsmCharacter {
           : const {},
       hiddenTasks: rawHidden is List
           ? rawHidden.map((e) => e.toString()).toSet()
+          : const {},
+      enabledOptionalTasks: rawEnabledOptional is List
+          ? rawEnabledOptional.map((e) => e.toString()).toSet()
           : const {},
     );
   }
