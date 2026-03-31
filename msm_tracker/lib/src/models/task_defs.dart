@@ -1,6 +1,8 @@
 enum TaskId {
   chaosDailyDungeon,
   forestOfErdaCharge,
+  chargeAutoBattle,
+  eventMinigames,
   pharaohsTreasure,
   cra,
 }
@@ -38,6 +40,18 @@ class TaskDefs {
       title: 'Forest of Erda Charge',
       resetType: ResetType.dailyUtcMidnight,
       isVisibleFor: _levelAtLeast220,
+    ),
+    TaskDef(
+      id: TaskId.chargeAutoBattle,
+      title: 'Charge Auto Battle',
+      resetType: ResetType.dailyUtcMidnight,
+      isVisibleFor: _always,
+    ),
+    TaskDef(
+      id: TaskId.eventMinigames,
+      title: 'Event minigames',
+      resetType: ResetType.dailyUtcMidnight,
+      isVisibleFor: _always,
     ),
     TaskDef(
       id: TaskId.pharaohsTreasure,
