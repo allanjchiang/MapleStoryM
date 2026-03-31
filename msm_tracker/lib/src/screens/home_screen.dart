@@ -1,0 +1,434 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../models/character.dart';
+import '../models/task_defs.dart';
+import '../storage/storage.dart';
+import '../utils/export_import.dart';
+import '../utils/reset_utils.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late List<MsmCharacter> _characters;
+  late ServerRegion _region;
+  Timer? _ticker;
+  DateTime _nowUtc = DateTime.now().toUtc();
+
+  @override
+  void initState() {
+    super.initState();
+    _characters = Storage.loadCharacters();
+    _region = ServerRegionUi.fromStorageKey(Storage.loadServerRegion());
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() => _nowUtc = DateTime.now().toUtc());
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _persist() async {
+    await Storage.saveCharacters(_characters);
+  }
+
+  Future<void> _addCharacter() async {
+    final created = await showDialog<MsmCharacter>(
+      context: context,
+      builder: (context) => CharacterDialog(
+        title: 'Add character',
+        initial: MsmCharacter(
+          id: Storage.newId(),
+          name: 'New character',
+          level: 1,
+          starforce: 0,
+          taskCompletions: const {},
+        ),
+      ),
+    );
+    if (created == null) return;
+    setState(() => _characters = [..._characters, created]);
+    await _persist();
+  }
+
+  Future<void> _editCharacter(MsmCharacter c) async {
+    final edited = await showDialog<MsmCharacter>(
+      context: context,
+      builder: (context) => CharacterDialog(
+        title: 'Edit character',
+        initial: c,
+      ),
+    );
+    if (edited == null) return;
+    setState(() {
+      _characters = _characters.map((x) => x.id == edited.id ? edited : x).toList();
+    });
+    await _persist();
+  }
+
+  Future<void> _deleteCharacter(MsmCharacter c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete character?'),
+        content: Text('Delete "${c.name}"? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _characters = _characters.where((x) => x.id != c.id).toList());
+    await _persist();
+  }
+
+  Future<void> _export() async {
+    final jsonMap = Storage.exportJson(_characters, serverRegion: _region.storageKey);
+    final filename = 'msm-tracker-export-${DateTime.now().toUtc().toIso8601String()}';
+    await saveJsonFile(filename: filename, jsonMap: jsonMap);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Export saved.')));
+  }
+
+  Future<void> _import() async {
+    final jsonText = await pickJsonFileText();
+    if (jsonText == null) return;
+    try {
+      final imported = Storage.importJson(jsonText);
+      setState(() {
+        _characters = imported.characters;
+        if (imported.serverRegion != null) {
+          _region = ServerRegionUi.fromStorageKey(imported.serverRegion!);
+        }
+      });
+      await _persist();
+      await Storage.saveServerRegion(_region.storageKey);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Import complete.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    }
+  }
+
+  Future<void> _chooseRegion() async {
+    final picked = await showDialog<ServerRegion>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Server region'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, ServerRegion.asia),
+            child: Text(ServerRegion.asia.label),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, ServerRegion.northAmerica),
+            child: Text(ServerRegion.northAmerica.label),
+          ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    setState(() => _region = picked);
+    await Storage.saveServerRegion(_region.storageKey);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final resets = ResetInfo.compute(region: _region, nowUtc: _nowUtc);
+    final untilDaily = formatDuration(resets.until(resets.nextDailyResetUtc));
+    final untilMon = formatDuration(resets.until(resets.nextMondayResetUtc));
+    final untilThu = formatDuration(resets.until(resets.nextThursdayResetUtc));
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('MSM Tracker'),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (v) async {
+              if (v == 'region') await _chooseRegion();
+              if (v == 'export') await _export();
+              if (v == 'import') await _import();
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'region',
+                child: Text('Server: ${_region.label}'),
+              ),
+              PopupMenuItem(value: 'export', child: Text('Export JSON')),
+              PopupMenuItem(value: 'import', child: Text('Import JSON')),
+            ],
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addCharacter,
+        label: const Text('Add'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          _ResetCard(
+            untilDaily: untilDaily,
+            untilMon: untilMon,
+            untilThu: untilThu,
+            region: _region,
+          ),
+          const SizedBox(height: 12),
+          if (_characters.isEmpty)
+            const _EmptyState()
+          else
+            ..._characters.map(
+              (c) => CharacterCard(
+                character: c,
+                nowUtc: _nowUtc,
+                region: _region,
+                onChanged: (next) async {
+                  setState(() {
+                    _characters =
+                        _characters.map((x) => x.id == next.id ? next : x).toList();
+                  });
+                  await _persist();
+                },
+                onEdit: () => _editCharacter(c),
+                onDelete: () => _deleteCharacter(c),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResetCard extends StatelessWidget {
+  final String untilDaily;
+  final String untilMon;
+  final String untilThu;
+  final ServerRegion region;
+
+  const _ResetCard({
+    required this.untilDaily,
+    required this.untilMon,
+    required this.untilThu,
+    required this.region,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Resets (${region.label})',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            _kv('Next daily reset', untilDaily),
+            _kv('Next Monday reset', untilMon),
+            _kv('Next Thursday reset', untilThu),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _kv(String k, String v) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(child: Text(k)),
+          Text(v, style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Text('No characters yet', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            const Text('Tap "Add" to create your first character.'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class CharacterCard extends StatelessWidget {
+  final MsmCharacter character;
+  final DateTime nowUtc;
+  final ServerRegion region;
+  final ValueChanged<MsmCharacter> onChanged;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const CharacterCard({
+    super.key,
+    required this.character,
+    required this.nowUtc,
+    required this.region,
+    required this.onChanged,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleTasks = TaskDefs.all
+        .where((t) => t.isVisibleFor(character.level, character.starforce))
+        .toList();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    character.name,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(onPressed: onEdit, icon: const Icon(Icons.edit)),
+                IconButton(onPressed: onDelete, icon: const Icon(Icons.delete)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text('Level: ${character.level}   Starforce: ${character.starforce}'),
+            const Divider(height: 20),
+            if (visibleTasks.isEmpty)
+              const Text('No tasks available for this character yet.')
+            else
+              ...visibleTasks.map((def) {
+                final key = resetKeyFor(
+                  resetType: def.resetType,
+                  nowUtc: nowUtc,
+                  region: region,
+                );
+                final done = character.isTaskDoneForCurrentReset(def, key);
+                return CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(def.title),
+                  value: done,
+                  onChanged: (v) {
+                    if (v == true) {
+                      onChanged(character.withTaskCompletion(def, resetKey: key));
+                    } else {
+                      onChanged(character.withTaskUnchecked(def));
+                    }
+                  },
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class CharacterDialog extends StatefulWidget {
+  final String title;
+  final MsmCharacter initial;
+
+  const CharacterDialog({super.key, required this.title, required this.initial});
+
+  @override
+  State<CharacterDialog> createState() => _CharacterDialogState();
+}
+
+class _CharacterDialogState extends State<CharacterDialog> {
+  late final TextEditingController _name;
+  late final TextEditingController _level;
+  late final TextEditingController _sf;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.initial.name);
+    _level = TextEditingController(text: widget.initial.level.toString());
+    _sf = TextEditingController(text: widget.initial.starforce.toString());
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _level.dispose();
+    _sf.dispose();
+    super.dispose();
+  }
+
+  int _parseInt(TextEditingController c, {required int fallback, int min = 0}) {
+    final v = int.tryParse(c.text.trim());
+    if (v == null) return fallback;
+    if (v < min) return min;
+    return v;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Name'),
+          ),
+          TextField(
+            controller: _level,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Level'),
+          ),
+          TextField(
+            controller: _sf,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Starforce'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () {
+            final next = widget.initial.copyWith(
+              name: _name.text.trim().isEmpty ? widget.initial.name : _name.text.trim(),
+              level: _parseInt(_level, fallback: widget.initial.level, min: 1),
+              starforce: _parseInt(_sf, fallback: widget.initial.starforce, min: 0),
+            );
+            Navigator.pop(context, next);
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
