@@ -68,6 +68,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _addCharacter() async {
     final created = await showDialog<MsmCharacter>(
       context: context,
+      useRootNavigator: true,
+      barrierDismissible: true,
       builder: (context) => CharacterDialog(
         title: 'Add character',
         initial: MsmCharacter(
@@ -89,6 +91,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _editCharacter(MsmCharacter c) async {
     final edited = await showDialog<MsmCharacter>(
       context: context,
+      useRootNavigator: true,
+      barrierDismissible: true,
       builder: (context) => CharacterDialog(
         title: 'Edit character',
         initial: c,
@@ -632,41 +636,75 @@ class _CharacterDialogState extends State<CharacterDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.title),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _name,
-            decoration: const InputDecoration(labelText: 'Name'),
+    final theme = Theme.of(context);
+    final maxW = MediaQuery.sizeOf(context).width - 48;
+
+    // Use Dialog + Material instead of AlertDialog alone — on Flutter Web,
+    // AlertDialog + TextField can paint as an empty/transparent sheet.
+    return Dialog(
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxW < 400 ? maxW : 400),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Material(
+            color: theme.colorScheme.surface,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(widget.title, style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _name,
+                    decoration: const InputDecoration(labelText: 'Name'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                  TextField(
+                    controller: _level,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Level'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                  TextField(
+                    controller: _sf,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Starforce'),
+                    textInputAction: TextInputAction.done,
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () {
+                          final next = widget.initial.copyWith(
+                            name: _name.text.trim().isEmpty
+                                ? widget.initial.name
+                                : _name.text.trim(),
+                            level: _parseInt(_level,
+                                fallback: widget.initial.level, min: 1),
+                            starforce: _parseInt(_sf,
+                                fallback: widget.initial.starforce, min: 0),
+                          );
+                          Navigator.pop(context, next);
+                        },
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-          TextField(
-            controller: _level,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Level'),
-          ),
-          TextField(
-            controller: _sf,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Starforce'),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: () {
-            final next = widget.initial.copyWith(
-              name: _name.text.trim().isEmpty ? widget.initial.name : _name.text.trim(),
-              level: _parseInt(_level, fallback: widget.initial.level, min: 1),
-              starforce: _parseInt(_sf, fallback: widget.initial.starforce, min: 0),
-            );
-            Navigator.pop(context, next);
-          },
-          child: const Text('Save'),
         ),
-      ],
+      ),
     );
   }
 }
