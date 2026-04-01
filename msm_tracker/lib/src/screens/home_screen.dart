@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../models/character.dart';
@@ -65,22 +66,40 @@ class _HomeScreenState extends State<HomeScreen> {
     await Storage.saveCharacters(_characters);
   }
 
-  Future<void> _addCharacter() async {
-    final created = await showDialog<MsmCharacter>(
+  Future<MsmCharacter?> _openCharacterEditor({
+    required String title,
+    required MsmCharacter initial,
+  }) async {
+    // Flutter Web + CanvasKit often paints only the modal barrier for showDialog;
+    // a full-screen route reliably shows the form.
+    if (kIsWeb) {
+      return Navigator.of(context).push<MsmCharacter>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (context) =>
+              CharacterEditorPage(title: title, initial: initial),
+        ),
+      );
+    }
+    return showDialog<MsmCharacter>(
       context: context,
       useRootNavigator: true,
       barrierDismissible: true,
-      builder: (context) => CharacterDialog(
-        title: 'Add character',
-        initial: MsmCharacter(
-          id: Storage.newId(),
-          name: 'New character',
-          level: 1,
-          starforce: 0,
-          taskCompletions: const {},
-          hiddenTasks: const {},
-          enabledOptionalTasks: const {},
-        ),
+      builder: (context) => CharacterDialog(title: title, initial: initial),
+    );
+  }
+
+  Future<void> _addCharacter() async {
+    final created = await _openCharacterEditor(
+      title: 'Add character',
+      initial: MsmCharacter(
+        id: Storage.newId(),
+        name: 'New character',
+        level: 1,
+        starforce: 0,
+        taskCompletions: const {},
+        hiddenTasks: const {},
+        enabledOptionalTasks: const {},
       ),
     );
     if (created == null) return;
@@ -89,14 +108,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _editCharacter(MsmCharacter c) async {
-    final edited = await showDialog<MsmCharacter>(
-      context: context,
-      useRootNavigator: true,
-      barrierDismissible: true,
-      builder: (context) => CharacterDialog(
-        title: 'Edit character',
-        initial: c,
-      ),
+    final edited = await _openCharacterEditor(
+      title: 'Edit character',
+      initial: c,
     );
     if (edited == null) return;
     setState(() {
@@ -592,6 +606,126 @@ class _ManageTasksDialogState extends State<ManageTasksDialog> {
           child: const Text('Save'),
         ),
       ],
+    );
+  }
+}
+
+/// Full-screen character editor for **web** — avoids blank `showDialog` on Flutter Web.
+class CharacterEditorPage extends StatefulWidget {
+  final String title;
+  final MsmCharacter initial;
+
+  const CharacterEditorPage({
+    super.key,
+    required this.title,
+    required this.initial,
+  });
+
+  @override
+  State<CharacterEditorPage> createState() => _CharacterEditorPageState();
+}
+
+class _CharacterEditorPageState extends State<CharacterEditorPage> {
+  late final TextEditingController _name;
+  late final TextEditingController _level;
+  late final TextEditingController _sf;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.initial.name);
+    _level = TextEditingController(text: widget.initial.level.toString());
+    _sf = TextEditingController(text: widget.initial.starforce.toString());
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _level.dispose();
+    _sf.dispose();
+    super.dispose();
+  }
+
+  int _parseInt(TextEditingController c, {required int fallback, int min = 0}) {
+    final v = int.tryParse(c.text.trim());
+    if (v == null) return fallback;
+    if (v < min) return min;
+    return v;
+  }
+
+  void _save() {
+    final next = widget.initial.copyWith(
+      name: _name.text.trim().isEmpty ? widget.initial.name : _name.text.trim(),
+      level: _parseInt(_level, fallback: widget.initial.level, min: 1),
+      starforce: _parseInt(_sf, fallback: widget.initial.starforce, min: 0),
+    );
+    Navigator.pop(context, next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Close',
+        ),
+      ),
+      body: SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _name,
+                    decoration: const InputDecoration(labelText: 'Name'),
+                    textInputAction: TextInputAction.next,
+                    autofocus: true,
+                  ),
+                  TextField(
+                    controller: _level,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Level'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                  TextField(
+                    controller: _sf,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Starforce'),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _save(),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _save,
+                          child: const Text('Save'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
