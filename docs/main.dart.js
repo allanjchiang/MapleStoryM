@@ -88745,7 +88745,7 @@ r.f.$1(p)},
 $S:90}
 A.VG.prototype={
 K(a){var s=this,r=null
-return A.a0v(new A.bY(B.h0,A.mb(A.c([A.cY("Resets ("+A.afe(s.f)+")",r,r,r,A.T(a).ok.w,r,r),B.lh,s.Ej("Next daily reset",s.c),s.Ej("Next Monday reset",s.d),s.Ej("Next Thursday reset",s.e)],t.p),B.bC,B.aq,B.bF),r))},
+return A.a0v(new A.bY(B.h0,A.mb(A.c([A.cY("Resets ("+A.afe(s.f)+")",r,r,r,A.T(a).ok.w,r,r),B.lh,s.Ej("Next daily reset",s.c),s.Ej("Next Monday reset (Pharaoh's Treasure)",s.d),s.Ej("Next Thursday reset (Chaos Root Abyss)",s.e)],t.p),B.bC,B.aq,B.bF),r))},
 Ej(a,b){var s=null
 return new A.bY(B.Eq,A.ut(A.c([A.Kk(A.cY(a,s,s,s,s,s,s)),A.cY(b,s,s,s,B.Tq,s,s)],t.p),B.b9,B.aq,B.bF),s)}}
 A.S6.prototype={
