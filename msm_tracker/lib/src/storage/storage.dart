@@ -82,9 +82,12 @@ class Storage {
   static String newId() {
     final now = DateTime.now().microsecondsSinceEpoch;
     final r = Random.secure();
-    // Avoid `nextInt(1 << 32)` — on dart2js, `1 << 32` can be 0, which throws
-    // RangeError: max must be in range 0 < max <= 2^32, was 0
-    final rand = (r.nextInt(1 << 16) << 16) | r.nextInt(1 << 16);
+    // dart2js: avoid any `1 << n` in `nextInt(...)` — shifts can compile to 0 and
+    // cause RangeError (max must be > 0). Use literals + arithmetic only.
+    const base = 65536;
+    final hi = r.nextInt(base);
+    final lo = r.nextInt(base);
+    final rand = hi * base + lo;
     return '$now-$rand';
   }
 

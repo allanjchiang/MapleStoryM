@@ -88318,7 +88318,7 @@ var $async$rM=A.R(function(a,b){if(a===1)return A.N(b,r)
 for(;;)switch(s){case 0:o=Date.now()
 n=$.axG()
 s=3
-return A.I(p.xg(new A.ct(""+1000*o+"-"+((n.Iu(65536)<<16|n.Iu(65536))>>>0),"New character",1,0,B.kz,B.i6,B.i6),"Add character"),$async$rM)
+return A.I(p.xg(new A.ct(""+1000*o+"-"+(n.Iu(65536)*65536+n.Iu(65536)),"New character",1,0,B.kz,B.i6,B.i6),"Add character"),$async$rM)
 case 3:m=b
 if(m==null){s=1
 break}p.ak(new A.alY(p,m))
