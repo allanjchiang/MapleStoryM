@@ -11,6 +11,8 @@ class Storage {
   static const _keyServerRegion = 'serverRegion';
   static const _keyGeneralTaskCompletions = 'generalTaskCompletions';
   static const _keyOptionalDefaultsDone = 'optionalDefaultsDone';
+  static const _keyOptionalCraDefaultsDone = 'optionalCraDefaultsDone';
+  static const _keyFreeChargeHighestRepairDone = 'freeChargeHighestRepairDone';
 
   static late final Box _box;
 
@@ -27,6 +29,12 @@ class Storage {
     }
     if (!_box.containsKey(_keyOptionalDefaultsDone)) {
       await _box.put(_keyOptionalDefaultsDone, false);
+    }
+    if (!_box.containsKey(_keyOptionalCraDefaultsDone)) {
+      await _box.put(_keyOptionalCraDefaultsDone, false);
+    }
+    if (!_box.containsKey(_keyFreeChargeHighestRepairDone)) {
+      await _box.put(_keyFreeChargeHighestRepairDone, false);
     }
   }
 
@@ -77,6 +85,24 @@ class Storage {
 
   static Future<void> saveOptionalDefaultsDone(bool done) async {
     await _box.put(_keyOptionalDefaultsDone, done);
+  }
+
+  static bool loadOptionalCraDefaultsDone() {
+    final v = _box.get(_keyOptionalCraDefaultsDone);
+    return v is bool ? v : false;
+  }
+
+  static Future<void> saveOptionalCraDefaultsDone(bool done) async {
+    await _box.put(_keyOptionalCraDefaultsDone, done);
+  }
+
+  static bool loadFreeChargeHighestRepairDone() {
+    final v = _box.get(_keyFreeChargeHighestRepairDone);
+    return v is bool ? v : false;
+  }
+
+  static Future<void> saveFreeChargeHighestRepairDone(bool done) async {
+    await _box.put(_keyFreeChargeHighestRepairDone, done);
   }
 
   static String newId() {

@@ -60,6 +60,7 @@ class TaskDefs {
       title: 'Chaos Root Abyss',
       resetType: ResetType.weeklyThursdayUtcMidnight,
       isVisibleFor: _always,
+      isOptional: true,
     ),
   ];
 

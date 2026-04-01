@@ -29,7 +29,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _characters = Storage.loadCharacters();
     _region = ServerRegionUi.fromStorageKey(Storage.loadServerRegion());
     _generalTaskCompletions = Storage.loadGeneralTaskCompletions();
-    _initOptionalDefaultsIfNeeded();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _initOptionalDefaultsIfNeeded();
+      await _repairFreeChargeOnHighestIfNeeded();
+      await _migrateOptionalCraIfNeeded();
+    });
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() => _nowUtc = DateTime.now().toUtc());
     });
@@ -37,10 +41,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _initOptionalDefaultsIfNeeded() async {
     if (Storage.loadOptionalDefaultsDone()) return;
-    if (_characters.isEmpty) {
-      await Storage.saveOptionalDefaultsDone(true);
-      return;
-    }
+    // Do not mark migration "done" while there are no characters — otherwise
+    // adding the first character later skips enabling Free Charge on highest.
+    if (_characters.isEmpty) return;
 
     // Enable optional tasks by default only for the highest-level character.
     final highest = _characters.reduce((a, b) => a.level >= b.level ? a : b);
@@ -54,6 +57,49 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _characters = next);
     await _persist();
     await Storage.saveOptionalDefaultsDone(true);
+  }
+
+  /// One-time fix: older versions marked optional defaults "done" with an empty roster,
+  /// so Free Charge never got enabled on highest. Add it if still missing.
+  Future<void> _repairFreeChargeOnHighestIfNeeded() async {
+    if (Storage.loadFreeChargeHighestRepairDone()) return;
+    if (_characters.isEmpty) return;
+
+    final fb = TaskId.freeChargeAutoBattle.name;
+    final highest = _characters.reduce((a, b) => a.level >= b.level ? a : b);
+    if (highest.enabledOptionalTasks.contains(fb)) {
+      await Storage.saveFreeChargeHighestRepairDone(true);
+      return;
+    }
+
+    final next = _characters.map((c) {
+      if (c.id != highest.id) return c;
+      final enabled = Set<String>.from(c.enabledOptionalTasks)..add(fb);
+      return c.copyWith(enabledOptionalTasks: enabled);
+    }).toList();
+
+    setState(() => _characters = next);
+    await _persist();
+    await Storage.saveFreeChargeHighestRepairDone(true);
+  }
+
+  /// Chaos Root Abyss is optional: on by default only for the highest-level character.
+  /// Others can enable it in the per-character task list (tune icon).
+  Future<void> _migrateOptionalCraIfNeeded() async {
+    if (Storage.loadOptionalCraDefaultsDone()) return;
+    if (_characters.isEmpty) return;
+
+    final craName = TaskId.cra.name;
+    final highest = _characters.reduce((a, b) => a.level >= b.level ? a : b);
+    final next = _characters.map((c) {
+      if (c.id != highest.id) return c;
+      final enabled = Set<String>.from(c.enabledOptionalTasks)..add(craName);
+      return c.copyWith(enabledOptionalTasks: enabled);
+    }).toList();
+
+    setState(() => _characters = next);
+    await _persist();
+    await Storage.saveOptionalCraDefaultsDone(true);
   }
 
   @override
@@ -105,6 +151,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (created == null) return;
     setState(() => _characters = [..._characters, created]);
     await _persist();
+    await _initOptionalDefaultsIfNeeded();
+    await _repairFreeChargeOnHighestIfNeeded();
+    await _migrateOptionalCraIfNeeded();
   }
 
   Future<void> _editCharacter(MsmCharacter c) async {
@@ -165,6 +214,9 @@ class _HomeScreenState extends State<HomeScreen> {
       await _persist();
       await Storage.saveServerRegion(_region.storageKey);
       await Storage.saveGeneralTaskCompletions(_generalTaskCompletions);
+      await _initOptionalDefaultsIfNeeded();
+      await _repairFreeChargeOnHighestIfNeeded();
+      await _migrateOptionalCraIfNeeded();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Import complete.')));
     } catch (e) {
