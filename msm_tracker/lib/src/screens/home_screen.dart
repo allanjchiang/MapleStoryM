@@ -299,7 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
         label: const Text('Add'),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         children: [
           _ResetCard(
             untilDaily: untilDaily,
@@ -367,19 +367,28 @@ class _GeneralChecklistCard extends StatelessWidget {
     );
     final done = completions[_eventMinigamesId] == resetKey;
 
+    final theme = Theme.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('General checklist', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
+            Text(
+              'General checklist',
+              style: theme.textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
             CheckboxListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Event minigames'),
-              subtitle: const Text('Daily'),
+              contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+              title: Text(
+                'Event minigames',
+                style: theme.textTheme.bodyLarge,
+              ),
+              subtitle: Text(
+                'Daily',
+                style: theme.textTheme.bodySmall,
+              ),
               value: done,
               onChanged: (v) {
                 final next = Map<String, String>.from(completions);
@@ -413,31 +422,46 @@ class _ResetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Resets (${region.label})',
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            _kv('Next daily reset', untilDaily),
-            _kv("Next Monday reset (Pharaoh's Treasure)", untilMon),
-            _kv('Next Thursday reset (Chaos Root Abyss)', untilThu),
+            Text(
+              'Resets (${region.label})',
+              style: theme.textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            _kv(context, 'Next daily reset', untilDaily),
+            _kv(context, "Next Monday reset (Pharaoh's Treasure)", untilMon),
+            _kv(context, 'Next Thursday reset (Chaos Root Abyss)', untilThu),
           ],
         ),
       ),
     );
   }
 
-  Widget _kv(String k, String v) {
+  Widget _kv(BuildContext context, String k, String v) {
+    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(k)),
-          Text(v, style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+          Expanded(
+            child: Text(
+              k,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+          Text(
+            v,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
         ],
       ),
     );
@@ -449,14 +473,19 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            Text('No characters yet', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            const Text('Tap "Add" to create your first character.'),
+            Text('No characters yet', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 10),
+            Text(
+              'Tap "Add" to create your first character.',
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
@@ -484,6 +513,7 @@ class CharacterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final eligibleTasks = TaskDefs.all
         .where((t) => t.isVisibleFor(character.level, character.starforce))
         .toList();
@@ -494,7 +524,7 @@ class CharacterCard extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -503,7 +533,7 @@ class CharacterCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     character.name,
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: theme.textTheme.titleLarge,
                   ),
                 ),
                 IconButton(
@@ -524,11 +554,20 @@ class CharacterCard extends StatelessWidget {
                 IconButton(onPressed: onDelete, icon: const Icon(Icons.delete)),
               ],
             ),
-            const SizedBox(height: 4),
-            Text('Level: ${character.level}   Starforce: ${character.starforce}'),
-            const Divider(height: 20),
+            const SizedBox(height: 8),
+            Text(
+              'Level: ${character.level}   Starforce: ${character.starforce}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 15,
+                height: 1.35,
+              ),
+            ),
+            const Divider(height: 28),
             if (visibleTasks.isEmpty)
-              const Text('No tasks to show for this character.')
+              Text(
+                'No tasks to show for this character.',
+                style: theme.textTheme.bodyMedium,
+              )
             else
               ...visibleTasks.map((def) {
                 final key = resetKeyFor(
@@ -538,8 +577,7 @@ class CharacterCard extends StatelessWidget {
                 );
                 final done = character.isTaskDoneForCurrentReset(def, key);
                 return ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 0),
                   leading: Checkbox(
                     value: done,
                     onChanged: (v) {
@@ -550,7 +588,10 @@ class CharacterCard extends StatelessWidget {
                       }
                     },
                   ),
-                  title: Text(def.title),
+                  title: Text(
+                    def.title,
+                    style: theme.textTheme.bodyLarge,
+                  ),
                   trailing: PopupMenuButton<String>(
                     onSelected: (v) {
                       if (v == 'hide') onChanged(character.withTaskHidden(def));
@@ -602,15 +643,22 @@ class _ManageTasksDialogState extends State<ManageTasksDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final tasks = TaskDefs.all;
     return AlertDialog(
-      title: Text('Tasks for ${widget.character.name}'),
+      title: Text(
+        'Tasks for ${widget.character.name}',
+        style: theme.textTheme.titleLarge,
+      ),
       content: SizedBox(
         width: 420,
         child: ListView(
           shrinkWrap: true,
           children: [
-            const Text('Toggle tasks you want to hide for this character.'),
+            Text(
+              'Toggle tasks you want to hide for this character.',
+              style: theme.textTheme.bodyMedium,
+            ),
             const SizedBox(height: 12),
             ...tasks.map((t) {
               final isEligible =
@@ -618,14 +666,18 @@ class _ManageTasksDialogState extends State<ManageTasksDialog> {
               final isHidden = _hidden.contains(t.id.name);
               final isOptionalEnabled = _enabledOptional.contains(t.id.name);
               return SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(t.title),
+                contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                title: Text(
+                  t.title,
+                  style: theme.textTheme.bodyLarge,
+                ),
                 subtitle: Text(
                   !isEligible
                       ? 'Not eligible'
                       : t.isOptional
                           ? (isOptionalEnabled ? 'Optional: enabled' : 'Optional: disabled')
                           : (isHidden ? 'Hidden' : 'Shown'),
+                  style: theme.textTheme.bodySmall,
                 ),
                 value: t.isOptional ? isOptionalEnabled : !isHidden,
                 onChanged: isEligible
