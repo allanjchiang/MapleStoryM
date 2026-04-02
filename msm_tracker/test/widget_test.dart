@@ -10,10 +10,12 @@ import 'package:hive/hive.dart';
 
 import 'package:msm_tracker/src/app.dart';
 import 'package:msm_tracker/src/storage/storage.dart';
+import 'package:msm_tracker/src/utils/timezone_init.dart';
 import 'dart:io';
 
 void main() {
   setUpAll(() async {
+    ensureTimezonesInitialized();
     final dir = await Directory.systemTemp.createTemp('msm_tracker_test_');
     Hive.init(dir.path);
     await Storage.init();

@@ -234,21 +234,96 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _chooseRegion() async {
+    final theme = Theme.of(context);
     final picked = await showDialog<ServerRegion>(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Server region'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, ServerRegion.asia),
-            child: Text(ServerRegion.asia.label),
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Game server'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Choose the region you play on. The app aligns daily and weekly '
+                  "checklist resets with midnight in that server's time zone.",
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ...ServerRegion.values.map((r) {
+                  final selected = r == _region;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: selected
+                          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.55)
+                          : theme.colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => Navigator.pop(ctx, r),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Icon(
+                                  selected
+                                      ? Icons.radio_button_checked
+                                      : Icons.radio_button_off,
+                                  color: selected
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      r.label,
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      r.resetScheduleHint,
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
           ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, ServerRegion.northAmerica),
-            child: Text(ServerRegion.northAmerica.label),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
     );
     if (picked == null) return;
     setState(() => _region = picked);
@@ -286,7 +361,23 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (context) => [
               PopupMenuItem(
                 value: 'region',
-                child: Text('Server: ${_region.label}'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Game server',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _region.label,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                  ],
+                ),
               ),
               PopupMenuItem(value: 'export', child: Text('Export JSON')),
               PopupMenuItem(value: 'import', child: Text('Import JSON')),

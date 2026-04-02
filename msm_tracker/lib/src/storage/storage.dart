@@ -74,12 +74,17 @@ class Storage {
 
   static String loadServerRegion() {
     final v = _box.get(_keyServerRegion);
-    if (v is String && (v == 'asia' || v == 'na')) return v;
+    if (v is String && (v == 'asia' || v == 'na' || v == 'eu')) return v;
     return 'asia';
   }
 
   static Future<void> saveServerRegion(String region) async {
-    await _box.put(_keyServerRegion, region == 'na' ? 'na' : 'asia');
+    final key = switch (region) {
+      'na' => 'na',
+      'eu' => 'eu',
+      _ => 'asia',
+    };
+    await _box.put(_keyServerRegion, key);
   }
 
   static Map<String, String> loadGeneralTaskCompletions() {
@@ -165,7 +170,8 @@ class Storage {
       throw const FormatException('Invalid JSON (expected characters list).');
     }
     final region = decoded['serverRegion'];
-    final parsedRegion = region is String && (region == 'asia' || region == 'na')
+    final parsedRegion = region is String &&
+            (region == 'asia' || region == 'na' || region == 'eu')
         ? region
         : null;
     final general = decoded['generalTaskCompletions'];
