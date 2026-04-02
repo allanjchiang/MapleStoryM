@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:hive/hive.dart';
 
 import '../models/character.dart';
@@ -13,6 +15,7 @@ class Storage {
   static const _keyOptionalDefaultsDone = 'optionalDefaultsDone';
   static const _keyOptionalCraDefaultsDone = 'optionalCraDefaultsDone';
   static const _keyFreeChargeHighestRepairDone = 'freeChargeHighestRepairDone';
+  static const _keyThemeMode = 'themeMode';
 
   static late final Box _box;
 
@@ -36,6 +39,21 @@ class Storage {
     if (!_box.containsKey(_keyFreeChargeHighestRepairDone)) {
       await _box.put(_keyFreeChargeHighestRepairDone, false);
     }
+  }
+
+  /// Unset key → web defaults to dark, other platforms to light.
+  static ThemeMode loadThemeMode() {
+    final v = _box.get(_keyThemeMode);
+    if (v == 'light') return ThemeMode.light;
+    if (v == 'dark') return ThemeMode.dark;
+    return kIsWeb ? ThemeMode.dark : ThemeMode.light;
+  }
+
+  static Future<void> saveThemeMode(ThemeMode mode) async {
+    await _box.put(
+      _keyThemeMode,
+      mode == ThemeMode.dark ? 'dark' : 'light',
+    );
   }
 
   static List<MsmCharacter> loadCharacters() {

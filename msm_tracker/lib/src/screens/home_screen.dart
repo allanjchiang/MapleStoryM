@@ -10,7 +10,14 @@ import '../utils/export_import.dart';
 import '../utils/reset_utils.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final ThemeMode themeMode;
+  final VoidCallback onToggleTheme;
+
+  const HomeScreen({
+    super.key,
+    required this.themeMode,
+    required this.onToggleTheme,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -259,6 +266,17 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('MSM Tracker'),
         actions: [
+          IconButton(
+            tooltip: widget.themeMode == ThemeMode.dark
+                ? 'Switch to light mode'
+                : 'Switch to dark mode',
+            onPressed: widget.onToggleTheme,
+            icon: Icon(
+              widget.themeMode == ThemeMode.dark
+                  ? Icons.light_mode
+                  : Icons.dark_mode,
+            ),
+          ),
           PopupMenuButton<String>(
             onSelected: (v) async {
               if (v == 'region') await _chooseRegion();
