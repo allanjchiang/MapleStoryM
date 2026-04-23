@@ -1,5 +1,6 @@
 import 'package:timezone/timezone.dart' as tz;
 
+import '../models/custom_task.dart';
 import '../models/task_defs.dart';
 import 'timezone_init.dart';
 
@@ -175,6 +176,84 @@ String resetKeyFor({
     case ResetType.weeklyThursdayUtcMidnight:
       final thursday = _startOfWeekLocal(nowLocal, DateTime.thursday);
       return '$regionPrefix:WThu:${_fmtYmd(thursday)}';
+  }
+}
+
+String customResetKeyFor({
+  required String taskId,
+  required CustomResetRule rule,
+  required DateTime nowUtc,
+  required ServerRegion region,
+}) {
+  final utc = nowUtc.toUtc();
+  final regionPrefix = region.storageKey;
+
+  if (region == ServerRegion.europe) {
+    ensureTimezonesInitialized();
+    final loc = tz.getLocation('Europe/Berlin');
+    final local = tz.TZDateTime.from(utc, loc);
+    final boundary = _customWindowStartBerlin(local, rule);
+    return _customKey(regionPrefix, taskId, boundary);
+  }
+
+  final offset = _fixedOffsetAsiaOrNa(region);
+  final local = utc.add(offset);
+  final boundary = _customWindowStartFixedOffset(local, rule);
+  return _customKey(regionPrefix, taskId, boundary);
+}
+
+String _customKey(String regionPrefix, String taskId, DateTime windowStartLocal) {
+  final y = windowStartLocal.year.toString().padLeft(4, '0');
+  final m = windowStartLocal.month.toString().padLeft(2, '0');
+  final d = windowStartLocal.day.toString().padLeft(2, '0');
+  final hh = windowStartLocal.hour.toString().padLeft(2, '0');
+  final mm = windowStartLocal.minute.toString().padLeft(2, '0');
+  return '$regionPrefix:CT:$taskId:$y-$m-${d}T$hh:$mm';
+}
+
+DateTime _customWindowStartFixedOffset(DateTime local, CustomResetRule rule) {
+  final hh = rule.minutesSinceMidnight ~/ 60;
+  final mm = rule.minutesSinceMidnight % 60;
+  final todayAt = DateTime.utc(local.year, local.month, local.day, hh, mm);
+
+  switch (rule.every) {
+    case CustomResetEvery.daily:
+      return local.isBefore(todayAt) ? todayAt.subtract(const Duration(days: 1)) : todayAt;
+    case CustomResetEvery.weekly:
+      final weekday = rule.weekday ?? DateTime.monday;
+      // Anchor is server-local time; compute most recent (weekday @ hh:mm) <= local.
+      final todayStart = DateTime.utc(local.year, local.month, local.day);
+      final deltaDays = (local.weekday - weekday) % 7;
+      var candidate = todayStart
+          .subtract(Duration(days: deltaDays))
+          .add(Duration(hours: hh, minutes: mm));
+      if (local.isBefore(candidate)) {
+        candidate = candidate.subtract(const Duration(days: 7));
+      }
+      return candidate;
+  }
+}
+
+tz.TZDateTime _customWindowStartBerlin(tz.TZDateTime local, CustomResetRule rule) {
+  final hh = rule.minutesSinceMidnight ~/ 60;
+  final mm = rule.minutesSinceMidnight % 60;
+  final loc = local.location;
+  final todayAt = tz.TZDateTime(loc, local.year, local.month, local.day, hh, mm);
+
+  switch (rule.every) {
+    case CustomResetEvery.daily:
+      return local.isBefore(todayAt) ? todayAt.subtract(const Duration(days: 1)) : todayAt;
+    case CustomResetEvery.weekly:
+      final weekday = rule.weekday ?? DateTime.monday;
+      final todayStart = tz.TZDateTime(loc, local.year, local.month, local.day);
+      final deltaDays = (local.weekday - weekday) % 7;
+      var candidate = todayStart
+          .subtract(Duration(days: deltaDays))
+          .add(Duration(hours: hh, minutes: mm));
+      if (local.isBefore(candidate)) {
+        candidate = candidate.subtract(const Duration(days: 7));
+      }
+      return candidate;
   }
 }
 

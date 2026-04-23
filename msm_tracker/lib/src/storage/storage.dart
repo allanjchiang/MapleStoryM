@@ -6,12 +6,14 @@ import 'package:flutter/material.dart' show ThemeMode;
 import 'package:hive/hive.dart';
 
 import '../models/character.dart';
+import '../models/custom_task.dart';
 
 class Storage {
   static const _boxName = 'msm_tracker';
   static const _keyCharacters = 'characters';
   static const _keyServerRegion = 'serverRegion';
   static const _keyGeneralTaskCompletions = 'generalTaskCompletions';
+  static const _keyCustomTasks = 'customTasks';
   static const _keyOptionalDefaultsDone = 'optionalDefaultsDone';
   static const _keyOptionalCraDefaultsDone = 'optionalCraDefaultsDone';
   static const _keyFreeChargeHighestRepairDone = 'freeChargeHighestRepairDone';
@@ -29,6 +31,9 @@ class Storage {
     }
     if (!_box.containsKey(_keyGeneralTaskCompletions)) {
       await _box.put(_keyGeneralTaskCompletions, <String, String>{});
+    }
+    if (!_box.containsKey(_keyCustomTasks)) {
+      await _box.put(_keyCustomTasks, <dynamic>[]);
     }
     if (!_box.containsKey(_keyOptionalDefaultsDone)) {
       await _box.put(_keyOptionalDefaultsDone, false);
@@ -101,6 +106,23 @@ class Storage {
     await _box.put(_keyGeneralTaskCompletions, completions);
   }
 
+  static List<CustomTask> loadCustomTasks() {
+    final raw = _box.get(_keyCustomTasks);
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((m) => CustomTask.fromJson(m.cast<String, dynamic>()))
+          .where((t) => t.id.trim().isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
+
+  static Future<void> saveCustomTasks(List<CustomTask> tasks) async {
+    final encoded = tasks.map((t) => t.toJson()).toList(growable: false);
+    await _box.put(_keyCustomTasks, encoded);
+  }
+
   static bool loadOptionalDefaultsDone() {
     final v = _box.get(_keyOptionalDefaultsDone);
     return v is bool ? v : false;
@@ -144,12 +166,14 @@ class Storage {
     List<MsmCharacter> characters, {
     required String serverRegion,
     required Map<String, String> generalTaskCompletions,
+    List<CustomTask> customTasks = const [],
   }) {
     return {
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'exportedAtUtc': DateTime.now().toUtc().toIso8601String(),
       'serverRegion': serverRegion,
       'generalTaskCompletions': generalTaskCompletions,
+      'customTasks': customTasks.map((t) => t.toJson()).toList(growable: false),
       'characters': characters.map((c) => c.toJson()).toList(),
     };
   }
@@ -157,7 +181,8 @@ class Storage {
   static ({
     List<MsmCharacter> characters,
     String? serverRegion,
-    Map<String, String>? generalTaskCompletions
+    Map<String, String>? generalTaskCompletions,
+    List<CustomTask>? customTasks
   }) importJson(
     String jsonText,
   ) {
@@ -178,6 +203,15 @@ class Storage {
     final parsedGeneral = general is Map
         ? general.map((k, v) => MapEntry(k.toString(), v.toString()))
         : null;
+
+    final custom = decoded['customTasks'];
+    final parsedCustom = custom is List
+        ? custom
+            .whereType<Map>()
+            .map((m) => CustomTask.fromJson(m.cast<String, dynamic>()))
+            .where((t) => t.id.trim().isNotEmpty)
+            .toList()
+        : null;
     return (
       characters: characters
         .whereType<Map>()
@@ -185,6 +219,7 @@ class Storage {
         .toList(),
       serverRegion: parsedRegion,
       generalTaskCompletions: parsedGeneral,
+      customTasks: parsedCustom,
     );
   }
 }

@@ -4,10 +4,12 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../models/character.dart';
+import '../models/custom_task.dart';
 import '../models/task_defs.dart';
 import '../storage/storage.dart';
 import '../utils/export_import.dart';
 import '../utils/reset_utils.dart';
+import 'custom_tasks_page.dart';
 
 class HomeScreen extends StatefulWidget {
   final ThemeMode themeMode;
@@ -27,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late List<MsmCharacter> _characters;
   late ServerRegion _region;
   late Map<String, String> _generalTaskCompletions;
+  late List<CustomTask> _customTasks;
   Timer? _ticker;
   DateTime _nowUtc = DateTime.now().toUtc();
 
@@ -36,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _characters = Storage.loadCharacters();
     _region = ServerRegionUi.fromStorageKey(Storage.loadServerRegion());
     _generalTaskCompletions = Storage.loadGeneralTaskCompletions();
+    _customTasks = Storage.loadCustomTasks();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initOptionalDefaultsIfNeeded();
       await _repairFreeChargeOnHighestIfNeeded();
@@ -197,6 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _characters,
       serverRegion: _region.storageKey,
       generalTaskCompletions: _generalTaskCompletions,
+      customTasks: _customTasks,
     );
     final filename = 'msm-tracker-export-${DateTime.now().toUtc().toIso8601String()}';
     await saveJsonFile(filename: filename, jsonMap: jsonMap);
@@ -217,10 +222,14 @@ class _HomeScreenState extends State<HomeScreen> {
         if (imported.generalTaskCompletions != null) {
           _generalTaskCompletions = imported.generalTaskCompletions!;
         }
+        if (imported.customTasks != null) {
+          _customTasks = imported.customTasks!;
+        }
       });
       await _persist();
       await Storage.saveServerRegion(_region.storageKey);
       await Storage.saveGeneralTaskCompletions(_generalTaskCompletions);
+      await Storage.saveCustomTasks(_customTasks);
       await _initOptionalDefaultsIfNeeded();
       await _repairFreeChargeOnHighestIfNeeded();
       await _migrateOptionalCraIfNeeded();
@@ -330,6 +339,52 @@ class _HomeScreenState extends State<HomeScreen> {
     await Storage.saveServerRegion(_region.storageKey);
   }
 
+  void _pruneCustomTaskCompletions(Set<String> removedTaskIds) {
+    if (removedTaskIds.isEmpty) return;
+
+    final nextGeneral = Map<String, String>.from(_generalTaskCompletions);
+    for (final id in removedTaskIds) {
+      nextGeneral.remove(id);
+    }
+
+    final nextCharacters = _characters.map((c) {
+      final next = Map<String, String>.from(c.taskCompletions);
+      var changed = false;
+      for (final id in removedTaskIds) {
+        if (next.remove(id) != null) changed = true;
+      }
+      return changed ? c.copyWith(taskCompletions: next) : c;
+    }).toList(growable: false);
+
+    _generalTaskCompletions = nextGeneral;
+    _characters = nextCharacters;
+  }
+
+  Future<void> _openCustomTasks() async {
+    final updated = await Navigator.of(context).push<List<CustomTask>>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => CustomTasksPage(
+          characters: _characters,
+          tasks: _customTasks,
+        ),
+      ),
+    );
+    if (updated == null) return;
+
+    final prevIds = _customTasks.map((t) => t.id).toSet();
+    final nextIds = updated.map((t) => t.id).toSet();
+    final removed = prevIds.difference(nextIds);
+
+    setState(() {
+      _customTasks = updated;
+      _pruneCustomTaskCompletions(removed);
+    });
+    await Storage.saveCustomTasks(_customTasks);
+    await Storage.saveGeneralTaskCompletions(_generalTaskCompletions);
+    await _persist();
+  }
+
   @override
   Widget build(BuildContext context) {
     final resets = ResetInfo.compute(region: _region, nowUtc: _nowUtc);
@@ -355,6 +410,7 @@ class _HomeScreenState extends State<HomeScreen> {
           PopupMenuButton<String>(
             onSelected: (v) async {
               if (v == 'region') await _chooseRegion();
+              if (v == 'custom') await _openCustomTasks();
               if (v == 'export') await _export();
               if (v == 'import') await _import();
             },
@@ -379,6 +435,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'custom',
+                child: Text('Custom checklist…'),
+              ),
+              const PopupMenuDivider(),
               PopupMenuItem(value: 'export', child: Text('Export JSON')),
               PopupMenuItem(value: 'import', child: Text('Import JSON')),
             ],
@@ -403,6 +465,7 @@ class _HomeScreenState extends State<HomeScreen> {
             nowUtc: _nowUtc,
             region: _region,
             completions: _generalTaskCompletions,
+            customTasks: _customTasks,
             onChanged: (next) async {
               setState(() => _generalTaskCompletions = next);
               await Storage.saveGeneralTaskCompletions(_generalTaskCompletions);
@@ -417,6 +480,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 character: c,
                 nowUtc: _nowUtc,
                 region: _region,
+                customTasks: _customTasks,
                 onChanged: (next) async {
                   setState(() {
                     _characters =
@@ -438,12 +502,14 @@ class _GeneralChecklistCard extends StatelessWidget {
   final DateTime nowUtc;
   final ServerRegion region;
   final Map<String, String> completions;
+  final List<CustomTask> customTasks;
   final ValueChanged<Map<String, String>> onChanged;
 
   const _GeneralChecklistCard({
     required this.nowUtc,
     required this.region,
     required this.completions,
+    required this.customTasks,
     required this.onChanged,
   });
 
@@ -459,6 +525,7 @@ class _GeneralChecklistCard extends StatelessWidget {
     final done = completions[_eventMinigamesId] == resetKey;
 
     final theme = Theme.of(context);
+    final generalCustom = customTasks.where((t) => t.inGeneralChecklist).toList();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -491,10 +558,62 @@ class _GeneralChecklistCard extends StatelessWidget {
                 onChanged(next);
               },
             ),
+            if (generalCustom.isNotEmpty) ...[
+              const Divider(height: 24),
+              ...generalCustom.map((t) {
+                final key = customResetKeyFor(
+                  taskId: t.id,
+                  rule: t.resetRule,
+                  nowUtc: nowUtc,
+                  region: region,
+                );
+                final isDone = completions[t.id] == key;
+                return CheckboxListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+                  title: Text(t.title, style: theme.textTheme.bodyLarge),
+                  subtitle: Text(_customRuleLabel(t.resetRule),
+                      style: theme.textTheme.bodySmall),
+                  value: isDone,
+                  onChanged: (v) {
+                    final next = Map<String, String>.from(completions);
+                    if (v == true) {
+                      next[t.id] = key;
+                    } else {
+                      next.remove(t.id);
+                    }
+                    onChanged(next);
+                  },
+                );
+              }),
+            ],
           ],
         ),
       ),
     );
+  }
+}
+
+String _customRuleLabel(CustomResetRule rule) {
+  final hh = (rule.minutesSinceMidnight ~/ 60).toString().padLeft(2, '0');
+  final mm = (rule.minutesSinceMidnight % 60).toString().padLeft(2, '0');
+  final at = '$hh:$mm';
+  switch (rule.every) {
+    case CustomResetEvery.daily:
+      return 'Daily • resets at $at (server time)';
+    case CustomResetEvery.weekly:
+      final w = rule.weekday ?? DateTime.monday;
+      final day = switch (w) {
+        DateTime.monday => 'Mon',
+        DateTime.tuesday => 'Tue',
+        DateTime.wednesday => 'Wed',
+        DateTime.thursday => 'Thu',
+        DateTime.friday => 'Fri',
+        DateTime.saturday => 'Sat',
+        DateTime.sunday => 'Sun',
+        _ => 'Mon',
+      };
+      return 'Weekly • $day • resets at $at (server time)';
   }
 }
 
@@ -588,6 +707,7 @@ class CharacterCard extends StatelessWidget {
   final MsmCharacter character;
   final DateTime nowUtc;
   final ServerRegion region;
+  final List<CustomTask> customTasks;
   final ValueChanged<MsmCharacter> onChanged;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -597,6 +717,7 @@ class CharacterCard extends StatelessWidget {
     required this.character,
     required this.nowUtc,
     required this.region,
+    required this.customTasks,
     required this.onChanged,
     required this.onEdit,
     required this.onDelete,
@@ -605,6 +726,8 @@ class CharacterCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final characterCustom =
+        customTasks.where((t) => t.characterIds.contains(character.id)).toList();
     final eligibleTasks = TaskDefs.all
         .where((t) => t.isVisibleFor(character.level, character.starforce))
         .toList();
@@ -654,12 +777,12 @@ class CharacterCard extends StatelessWidget {
               ),
             ),
             const Divider(height: 28),
-            if (visibleTasks.isEmpty)
+            if (visibleTasks.isEmpty && characterCustom.isEmpty)
               Text(
                 'No tasks to show for this character.',
                 style: theme.textTheme.bodyMedium,
               )
-            else
+            else ...[
               ...visibleTasks.map((def) {
                 final key = resetKeyFor(
                   resetType: def.resetType,
@@ -700,6 +823,49 @@ class CharacterCard extends StatelessWidget {
                   },
                 );
               }),
+              if (characterCustom.isNotEmpty) ...[
+                const Divider(height: 24),
+                ...characterCustom.map((t) {
+                  final key = customResetKeyFor(
+                    taskId: t.id,
+                    rule: t.resetRule,
+                    nowUtc: nowUtc,
+                    region: region,
+                  );
+                  final done = character.taskCompletions[t.id] == key;
+                  return ListTile(
+                    contentPadding:
+                        const EdgeInsets.symmetric(vertical: 6, horizontal: 0),
+                    leading: Checkbox(
+                      value: done,
+                      onChanged: (v) {
+                        final next = Map<String, String>.from(character.taskCompletions);
+                        if (v == true) {
+                          next[t.id] = key;
+                        } else {
+                          next.remove(t.id);
+                        }
+                        onChanged(character.copyWith(taskCompletions: next));
+                      },
+                    ),
+                    title: Text(t.title, style: theme.textTheme.bodyLarge),
+                    subtitle: Text(
+                      _customRuleLabel(t.resetRule),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    onTap: () {
+                      final next = Map<String, String>.from(character.taskCompletions);
+                      if (done) {
+                        next.remove(t.id);
+                      } else {
+                        next[t.id] = key;
+                      }
+                      onChanged(character.copyWith(taskCompletions: next));
+                    },
+                  );
+                }),
+              ],
+            ],
           ],
         ),
       ),
